@@ -6,7 +6,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
-import android.graphics.Color;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Binder;
@@ -22,9 +21,17 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     private static final int ONGOING_NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "Music channel";
 
+    private final IBinder mBinder = new MusicServiceBinder();
+
     MediaPlayer mMediaPlayer;
 
     NotificationManager mNotificationManager;
+
+    public class MusicServiceBinder extends Binder {
+        MusicService getService() {
+            return MusicService.this;
+        }
+    }
 
     public MusicService() {
     }
@@ -62,6 +69,9 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
                 mMediaPlayer.setOnCompletionListener(MusicService.this);
                 mMediaPlayer.prepare();
                 mMediaPlayer.start();
+
+                Intent musicStartIntent = new Intent(MainActivity.ACTION_MUSIC_START);
+                sendBroadcast(musicStartIntent);
 
             } catch (IOException ex) {
                 ex.printStackTrace();
@@ -104,12 +114,93 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     @Override
     public IBinder onBind(Intent intent) {
         // TODO: Return the communication channel to the service.
-        throw new UnsupportedOperationException("Not yet implemented");
+        return mBinder;
     }
 
     @Override
     public void onCompletion(MediaPlayer mediaPlayer) {
 
+    }
+
+    /** method for clients */
+    public void pause() {
+        if (mMediaPlayer != null && mMediaPlayer.isPlaying()) {
+            mMediaPlayer.pause();
+        }
+    }
+
+    public void play() {
+        if (mMediaPlayer != null) {
+            mMediaPlayer.start();
+
+            Intent musicStartIntent = new Intent(MainActivity.ACTION_MUSIC_START);
+            sendBroadcast(musicStartIntent);
+        }
+    }
+
+    public void start(Uri dataUri, Bundle bundle) {
+
+        String title = bundle.getString(MainActivity.TITLE, "Title");
+        String artist = bundle.getString(MainActivity.ARTIST, "Artist");
+
+        if (mMediaPlayer != null) {
+            try {
+                mMediaPlayer.reset();
+                mMediaPlayer.setDataSource(getApplicationContext(), dataUri);
+                mMediaPlayer.setOnCompletionListener(MusicService.this);
+                mMediaPlayer.prepare();
+                mMediaPlayer.start();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+
+            Intent notificationIntent = new Intent(getApplicationContext(), MainActivity.class);
+            PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(), 0, notificationIntent, 0);
+
+            NotificationCompat.Builder builder;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new NotificationCompat.Builder(getApplicationContext(), CHANNEL_ID);
+            } else {
+                builder = new NotificationCompat.Builder(getApplicationContext());
+            }
+
+            Notification notification = builder
+                    .setContentTitle(title)
+                    .setContentText(artist)
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setContentIntent(pendingIntent).build();
+
+            startForeground(ONGOING_NOTIFICATION_ID, notification);
+        }
+    }
+
+    public int getDuration() {
+        int duration = 0;
+
+        if (mMediaPlayer != null) {
+            duration = mMediaPlayer.getDuration();
+        }
+
+        return duration;
+    }
+
+    public int getCurrentPosition() {
+        int position = 0;
+
+        if (mMediaPlayer != null) {
+            position = mMediaPlayer.getCurrentPosition();
+        }
+
+        return position;
+    }
+
+    public boolean isPlaying() {
+
+        if (mMediaPlayer != null) {
+            return mMediaPlayer.isPlaying();
+        }
+        return false;
     }
 }
 

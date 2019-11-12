@@ -8,7 +8,6 @@ import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.Loader;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -18,12 +17,9 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
-import android.os.Messenger;
-import android.os.RemoteException;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
 import android.support.v4.app.ActivityCompat;
-import android.app.LoaderManager;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -38,8 +34,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
-
-import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
@@ -60,9 +54,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             "audio/mpeg"
     };
 
+    public static final int UPDATE_PROGRESS = 1;
     public static final String DATA_URI = "com.glriverside.xgqin.ggmusic.DATA_URI";
     public static final String TITLE = "com.glriverside.xgqin.ggmusic.TITLE";
     public static final String ARTIST = "com.glriverside.xgqin.ggmusic.ARTIST";
+    public static final String ACTION_MUSIC_START = "com.glriverside.xgqin.ggmusic.ACTION_MUSIC_START";
+    public static final String ACTION_MUSIC_STOP = "com.glriverside.xgqin.ggmusic.ACTION_MUSIC_STOP";
 
     private static final String TAG = MainActivity.class.getSimpleName();
 
@@ -75,6 +72,42 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private ProgressBar pbProgress;
 
+    private MediaPlayer mMediaPlayer = null;
+    private int musicIndex = 0;
+
+    private MusicService mService;
+    private boolean mBound = false;
+
+    private MusicReceiver musicReceiver;
+
+    private Handler mHandler = new Handler(Looper.getMainLooper()) {
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case UPDATE_PROGRESS:
+                    int position = msg.arg1;
+                    pbProgress.setProgress(position);
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+
+    private ServiceConnection mConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            MusicService.MusicServiceBinder binder = (MusicService.MusicServiceBinder) iBinder;
+
+            mService = binder.getService();
+            mBound = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            mService = null;
+            mBound = false;
+        }
+    };
 
     private ListView.OnItemClickListener itemClickListener = new ListView.OnItemClickListener() {
         @Override
@@ -93,6 +126,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 String data = cursor.getString(dataIndex);
 
                 Uri dataUri = Uri.parse(data);
+
+                musicIndex = i;
 
                 Intent serviceIntent = new Intent(MainActivity.this, MusicService.class);
                 serviceIntent.putExtra(MainActivity.DATA_URI, data);
@@ -136,6 +171,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     };
 
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -164,6 +200,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         mPlaylist.setOnItemClickListener(itemClickListener);
 
+        if (mMediaPlayer == null) {
+            mMediaPlayer = new MediaPlayer();
+            Log.d(TAG, "MediaPlayer instance created!");
+        }
+
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
@@ -175,7 +216,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         } else {
             initPlaylist();
         }
+
+        musicReceiver = new MusicReceiver();
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(ACTION_MUSIC_START);
+        intentFilter.addAction(ACTION_MUSIC_STOP);
+        registerReceiver(musicReceiver, intentFilter);
+
     }
+
 
     private void initPlaylist() {
         Cursor cursor = mContentResolver.query(
@@ -193,17 +242,31 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     @Override
     protected void onStart() {
+
+        Intent intent = new Intent(MainActivity.this, MusicService.class);
+        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
         super.onStart();
     }
 
     @Override
     protected void onStop() {
+        unbindService(mConnection);
+        mBound = false;
+
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
+        if (mMediaPlayer != null) {
+            mMediaPlayer.stop();
+            mMediaPlayer.release();
+            mMediaPlayer = null;
+        }
+
+        unregisterReceiver(musicReceiver);
         super.onDestroy();
+
     }
 
     @Override
@@ -227,11 +290,59 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 mPlayStatus = !mPlayStatus;
                 Log.d(TAG, "play status changed");
                 if (mPlayStatus == true) {
+                    mService.play();
                     ivPlay.setImageResource(R.drawable.ic_pause_circle_outline_black_24dp);
                 } else {
+                    mService.pause();
                     ivPlay.setImageResource(R.drawable.ic_play_circle_outline_black_24dp);
                 }
                 break;
+        }
+    }
+
+    private class MusicProgressRunnable implements Runnable {
+
+        public MusicProgressRunnable() {
+        }
+
+        @Override
+        public void run() {
+            boolean mThreadWorking = true;
+            while (mThreadWorking) {
+                try {
+                    if (mService != null) {
+                        int position = mService.getCurrentPosition();
+
+                        Message message = new Message();
+                        message.what = UPDATE_PROGRESS;
+                        message.arg1 = position;
+                        mHandler.sendMessage(message);
+
+                        Log.d(TAG, "CurrentPosition: " + position);
+                    }
+
+                    mThreadWorking = mService.isPlaying();
+
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    ie.printStackTrace();
+                }
+            }
+        }
+    }
+
+    public class MusicReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+
+            if (intent.getAction().equals(ACTION_MUSIC_START)) {
+                if (mService != null) {
+                    pbProgress.setMax(mService.getDuration());
+                    Log.d(TAG, "Duration: " + mService.getDuration());
+                    new Thread(new MusicProgressRunnable()).start();
+                }
+            }
         }
     }
 }
