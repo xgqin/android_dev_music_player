@@ -1,15 +1,29 @@
 package com.glriverside.xgqin.ggmusic;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.Loader;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.media.MediaPlayer;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.os.Messenger;
+import android.os.RemoteException;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
 import android.support.v4.app.ActivityCompat;
+import android.app.LoaderManager;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -25,6 +39,7 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 
+import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
@@ -60,6 +75,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private ProgressBar pbProgress;
 
+
     private ListView.OnItemClickListener itemClickListener = new ListView.OnItemClickListener() {
         @Override
         public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
@@ -83,7 +99,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 serviceIntent.putExtra(MainActivity.TITLE, title);
                 serviceIntent.putExtra(MainActivity.ARTIST, artist);
 
-                startService(serviceIntent);
+                startForegroundService(serviceIntent);
 
                 navigation.setVisibility(View.VISIBLE);
 
@@ -119,7 +135,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
     };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
