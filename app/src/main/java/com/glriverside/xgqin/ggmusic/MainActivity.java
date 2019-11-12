@@ -3,9 +3,9 @@ package com.glriverside.xgqin.ggmusic;
 import android.Manifest;
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
@@ -25,7 +25,6 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 
-import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
@@ -46,12 +45,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             "audio/mpeg"
     };
 
-    public static final int UPDATE_PROGRESS = 1;
     public static final String DATA_URI = "com.glriverside.xgqin.ggmusic.DATA_URI";
     public static final String TITLE = "com.glriverside.xgqin.ggmusic.TITLE";
     public static final String ARTIST = "com.glriverside.xgqin.ggmusic.ARTIST";
-    public static final String ACTION_MUSIC_START = "com.glriverside.xgqin.ggmusic.ACTION_MUSIC_START";
-    public static final String ACTION_MUSIC_STOP = "com.glriverside.xgqin.ggmusic.ACTION_MUSIC_STOP";
 
     private static final String TAG = MainActivity.class.getSimpleName();
 
@@ -63,8 +59,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private ImageView ivAlbumThumbnail;
 
     private ProgressBar pbProgress;
-
-    private MediaPlayer mMediaPlayer = null;
 
     private ListView.OnItemClickListener itemClickListener = new ListView.OnItemClickListener() {
         @Override
@@ -84,16 +78,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                 Uri dataUri = Uri.parse(data);
 
-                if (mMediaPlayer != null) {
-                    try {
-                        mMediaPlayer.reset();
-                        mMediaPlayer.setDataSource(MainActivity.this, dataUri);
-                        mMediaPlayer.prepare();
-                        mMediaPlayer.start();
-                    } catch (IOException ex) {
-                        ex.printStackTrace();
-                    }
-                }
+                Intent serviceIntent = new Intent(MainActivity.this, MusicService.class);
+                serviceIntent.putExtra(MainActivity.DATA_URI, data);
+                serviceIntent.putExtra(MainActivity.TITLE, title);
+                serviceIntent.putExtra(MainActivity.ARTIST, artist);
+
+                startService(serviceIntent);
 
                 navigation.setVisibility(View.VISIBLE);
 
@@ -120,6 +110,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     cursor.moveToFirst();
                     int albumArtIndex = cursor.getColumnIndex(MediaStore.Audio.Albums.ALBUM_ART);
                     String albumArt = cursor.getString(albumArtIndex);
+
+                    Log.d(TAG, "albumArt: " + albumArt);
+
                     Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
                     cursor.close();
                 }
@@ -156,11 +149,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         mPlaylist.setOnItemClickListener(itemClickListener);
 
-        if (mMediaPlayer == null) {
-            mMediaPlayer = new MediaPlayer();
-            Log.d(TAG, "MediaPlayer instance created!");
-        }
-
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
@@ -173,7 +161,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             initPlaylist();
         }
     }
-
 
     private void initPlaylist() {
         Cursor cursor = mContentResolver.query(
@@ -192,33 +179,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     protected void onStart() {
         super.onStart();
-
-        if (mMediaPlayer == null) {
-            mMediaPlayer = new MediaPlayer();
-        }
     }
 
     @Override
     protected void onStop() {
-        if (mMediaPlayer != null) {
-            mMediaPlayer.stop();
-            mMediaPlayer.release();
-            mMediaPlayer = null;
-        }
-
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        if (mMediaPlayer != null) {
-            mMediaPlayer.stop();
-            mMediaPlayer.release();
-            mMediaPlayer = null;
-        }
-
         super.onDestroy();
-
     }
 
     @Override
@@ -242,14 +212,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 mPlayStatus = !mPlayStatus;
                 Log.d(TAG, "play status changed");
                 if (mPlayStatus == true) {
-                    if (mMediaPlayer != null) {
-                        mMediaPlayer.start();
-                    }
                     ivPlay.setImageResource(R.drawable.ic_pause_circle_outline_black_24dp);
                 } else {
-                    if (mMediaPlayer != null) {
-                        mMediaPlayer.pause();
-                    }
                     ivPlay.setImageResource(R.drawable.ic_play_circle_outline_black_24dp);
                 }
                 break;
