@@ -11,16 +11,18 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.design.widget.BottomNavigationView;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.LoaderManager;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.provider.MediaStore;
@@ -47,13 +49,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
 
-    private final String SELECTION = MediaStore.Audio.Media.IS_MUSIC + " = ? " +
-            " AND " + MediaStore.Audio.Media.MIME_TYPE + " LIKE ? ";
-    private final String[] SELECTION_ARGS = {
-            Integer.toString(1),
-            "audio/mpeg"
-    };
-
     public static final int UPDATE_PROGRESS = 1;
     public static final String DATA_URI = "com.glriverside.xgqin.ggmusic.DATA_URI";
     public static final String TITLE = "com.glriverside.xgqin.ggmusic.TITLE";
@@ -71,9 +66,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private ImageView ivAlbumThumbnail;
 
     private ProgressBar pbProgress;
-
-    private MediaPlayer mMediaPlayer = null;
-    private int musicIndex = 0;
 
     private MusicService mService;
     private boolean mBound = false;
@@ -127,8 +119,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                 Uri dataUri = Uri.parse(data);
 
-                musicIndex = i;
-
                 Intent serviceIntent = new Intent(MainActivity.this, MusicService.class);
                 serviceIntent.putExtra(MainActivity.DATA_URI, data);
                 serviceIntent.putExtra(MainActivity.TITLE, title);
@@ -172,6 +162,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     };
 
 
+    private LoaderManager.LoaderCallbacks<Cursor> loaderCallbacks = new LoaderManager.LoaderCallbacks<Cursor>() {
+        @NonNull
+        @Override
+        public Loader<Cursor> onCreateLoader(int id, @Nullable Bundle args) {
+            return new MediaAsyncTaskLoader(MainActivity.this);
+        }
+
+        @Override
+        public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor data) {
+            mCursorAdapter.swapCursor(data);
+            mCursorAdapter.notifyDataSetChanged();
+        }
+
+        @Override
+        public void onLoaderReset(@NonNull Loader<Cursor> loader) {
+
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -200,11 +209,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         mPlaylist.setOnItemClickListener(itemClickListener);
 
-        if (mMediaPlayer == null) {
-            mMediaPlayer = new MediaPlayer();
-            Log.d(TAG, "MediaPlayer instance created!");
-        }
-
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
@@ -214,7 +218,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 requestPermissions(PERMISSIONS_STORAGE, REQUEST_EXTERNAL_STORAGE);
             }
         } else {
-            initPlaylist();
+            getSupportLoaderManager().initLoader(0, null, loaderCallbacks);
         }
 
         musicReceiver = new MusicReceiver();
@@ -223,21 +227,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         intentFilter.addAction(ACTION_MUSIC_STOP);
         registerReceiver(musicReceiver, intentFilter);
 
-    }
-
-
-    private void initPlaylist() {
-        Cursor cursor = mContentResolver.query(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                null,
-                SELECTION,
-                SELECTION_ARGS,
-                MediaStore.Audio.Media.DEFAULT_SORT_ORDER);
-
-        if (cursor != null) {
-            mCursorAdapter.swapCursor(cursor);
-            mCursorAdapter.notifyDataSetChanged();
-        }
     }
 
     @Override
@@ -258,15 +247,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     @Override
     protected void onDestroy() {
-        if (mMediaPlayer != null) {
-            mMediaPlayer.stop();
-            mMediaPlayer.release();
-            mMediaPlayer = null;
-        }
-
         unregisterReceiver(musicReceiver);
         super.onDestroy();
-
     }
 
     @Override
@@ -275,7 +257,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case REQUEST_EXTERNAL_STORAGE:
                 if (grantResults.length > 0
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    initPlaylist();
+                    getSupportLoaderManager().initLoader(0, null, loaderCallbacks);
                 }
                 break;
             default:
