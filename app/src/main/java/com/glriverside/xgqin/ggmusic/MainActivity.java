@@ -8,26 +8,15 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.support.annotation.NonNull;
-import android.support.design.widget.BottomNavigationView;
-import android.support.design.widget.BottomSheetDialog;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.provider.MediaStore;
-import android.text.Layout;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.AdapterView;
-import android.widget.ImageView;
 import android.widget.ListView;
-import android.widget.ProgressBar;
-import android.widget.TextView;
-
-import com.bumptech.glide.Glide;
-
-import java.util.zip.Inflater;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -96,27 +85,16 @@ public class MainActivity extends AppCompatActivity {
 
                 if (cursor != null && cursor.getCount() > 0) {
 
-                    BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(MainActivity.this);
-                    View sheetView = LayoutInflater.from(MainActivity.this).inflate(R.layout.bottom_media_toolbar, null);
-                    bottomSheetDialog.setContentView(sheetView);
-
-                    ImageView ivAlbumThumbnail = sheetView.findViewById(R.id.iv_thumbnail);
-                    TextView tvTitle = sheetView.findViewById(R.id.tv_bottom_title);
-                    TextView tvArtist = sheetView.findViewById(R.id.tv_bottom_artist);
-
-                    tvTitle.setText(title);
-                    tvArtist.setText(artist);
-
                     cursor.moveToFirst();
                     int albumArtIndex = cursor.getColumnIndex(MediaStore.Audio.Albums.ALBUM_ART);
                     String albumArt = cursor.getString(albumArtIndex);
 
                     Log.d(TAG, "albumArt: " + albumArt);
 
-                    Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
+                   // Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
+                    MediaInfoDialogFragment fragment = MediaInfoDialogFragment.newInstance(title, artist, albumArt);
+                    fragment.show(getSupportFragmentManager(), null);
                     cursor.close();
-
-                    bottomSheetDialog.show();
                 }
 
             }
