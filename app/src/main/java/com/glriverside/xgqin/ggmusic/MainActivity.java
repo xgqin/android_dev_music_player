@@ -9,11 +9,13 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
+import android.support.design.widget.BottomSheetDialog;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.text.Layout;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -25,8 +27,10 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 
+import java.util.zip.Inflater;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener{
+
+public class MainActivity extends AppCompatActivity {
 
     private ContentResolver mContentResolver;
     private ListView mPlaylist;
@@ -52,13 +56,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private static final String TAG = MainActivity.class.getSimpleName();
 
     private Boolean mPlayStatus = true;
-    private ImageView ivPlay;
-    private BottomNavigationView navigation;
-    private TextView tvBottomTitle;
-    private TextView tvBottomArtist;
-    private ImageView ivAlbumThumbnail;
-
-    private ProgressBar pbProgress;
 
     private ListView.OnItemClickListener itemClickListener = new ListView.OnItemClickListener() {
         @Override
@@ -85,15 +82,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                 startService(serviceIntent);
 
-                navigation.setVisibility(View.VISIBLE);
-
-                if (tvBottomTitle != null) {
-                    tvBottomTitle.setText(title);
-                }
-                if (tvBottomArtist != null) {
-                    tvBottomArtist.setText(artist);
-                }
-
                 Uri albumUri = ContentUris.withAppendedId(
                         MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
                         albumId);
@@ -107,6 +95,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 );
 
                 if (cursor != null && cursor.getCount() > 0) {
+
+                    BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(MainActivity.this);
+                    View sheetView = LayoutInflater.from(MainActivity.this).inflate(R.layout.bottom_media_toolbar, null);
+                    bottomSheetDialog.setContentView(sheetView);
+
+                    ImageView ivAlbumThumbnail = sheetView.findViewById(R.id.iv_thumbnail);
+                    TextView tvTitle = sheetView.findViewById(R.id.tv_bottom_title);
+                    TextView tvArtist = sheetView.findViewById(R.id.tv_bottom_artist);
+
+                    tvTitle.setText(title);
+                    tvArtist.setText(artist);
+
                     cursor.moveToFirst();
                     int albumArtIndex = cursor.getColumnIndex(MediaStore.Audio.Albums.ALBUM_ART);
                     String albumArt = cursor.getString(albumArtIndex);
@@ -115,7 +115,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                     Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
                     cursor.close();
+
+                    bottomSheetDialog.show();
                 }
+
             }
         }
     };
@@ -131,21 +134,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mContentResolver = getContentResolver();
         mCursorAdapter = new MediaCursorAdapter(MainActivity.this);
         mPlaylist.setAdapter(mCursorAdapter);
-
-        navigation = findViewById(R.id.navigation);
-        LayoutInflater.from(MainActivity.this).inflate(R.layout.bottom_media_toolbar, navigation, true);
-
-        ivPlay = navigation.findViewById(R.id.iv_play);
-        tvBottomTitle = navigation.findViewById(R.id.tv_bottom_title);
-        tvBottomArtist = navigation.findViewById(R.id.tv_bottom_artist);
-        ivAlbumThumbnail = navigation.findViewById(R.id.iv_thumbnail);
-        pbProgress = navigation.findViewById(R.id.progress);
-
-        if (ivPlay != null) {
-            ivPlay.setOnClickListener(MainActivity.this);
-        }
-
-        navigation.setVisibility(View.GONE);
 
         mPlaylist.setOnItemClickListener(itemClickListener);
 
@@ -201,21 +189,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }
                 break;
             default:
-                break;
-        }
-    }
-
-    @Override
-    public void onClick(View view) {
-        switch (view.getId()) {
-            case R.id.iv_play:
-                mPlayStatus = !mPlayStatus;
-                Log.d(TAG, "play status changed");
-                if (mPlayStatus == true) {
-                    ivPlay.setImageResource(R.drawable.ic_pause_circle_outline_black_24dp);
-                } else {
-                    ivPlay.setImageResource(R.drawable.ic_play_circle_outline_black_24dp);
-                }
                 break;
         }
     }
