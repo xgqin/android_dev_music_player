@@ -8,6 +8,8 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.support.annotation.NonNull;
+import android.support.constraint.ConstraintLayout;
+import android.support.design.widget.BottomSheetBehavior;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -15,8 +17,14 @@ import android.os.Bundle;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.widget.AbsListView;
 import android.widget.AdapterView;
+import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.TextView;
+
+import com.bumptech.glide.Glide;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -46,6 +54,11 @@ public class MainActivity extends AppCompatActivity {
 
     private Boolean mPlayStatus = true;
 
+    private BottomSheetBehavior bottomSheetBehavior;
+    private ConstraintLayout layoutBottomSheet;
+
+    private boolean isPlaying = false;
+
     private ListView.OnItemClickListener itemClickListener = new ListView.OnItemClickListener() {
         @Override
         public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
@@ -69,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
                 serviceIntent.putExtra(MainActivity.TITLE, title);
                 serviceIntent.putExtra(MainActivity.ARTIST, artist);
 
+                isPlaying = true;
                 startService(serviceIntent);
 
                 Uri albumUri = ContentUris.withAppendedId(
@@ -85,21 +99,28 @@ public class MainActivity extends AppCompatActivity {
 
                 if (cursor != null && cursor.getCount() > 0) {
 
+                    ImageView ivAlbumThumbnail = findViewById(R.id.iv_thumbnail);
+                    TextView tvTitle = findViewById(R.id.tv_bottom_title);
+                    TextView tvArtist = findViewById(R.id.tv_bottom_artist);
+
                     cursor.moveToFirst();
                     int albumArtIndex = cursor.getColumnIndex(MediaStore.Audio.Albums.ALBUM_ART);
                     String albumArt = cursor.getString(albumArtIndex);
 
                     Log.d(TAG, "albumArt: " + albumArt);
 
-                   // Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
-                    MediaInfoDialogFragment fragment = MediaInfoDialogFragment.newInstance(title, artist, albumArt);
-                    fragment.show(getSupportFragmentManager(), null);
+                    tvTitle.setText(title);
+                    tvArtist.setText(artist);
+                    Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
+
+                    bottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
                     cursor.close();
                 }
 
             }
         }
     };
+
 
 
     @Override
@@ -114,6 +135,63 @@ public class MainActivity extends AppCompatActivity {
         mPlaylist.setAdapter(mCursorAdapter);
 
         mPlaylist.setOnItemClickListener(itemClickListener);
+
+        mPlaylist.setOnScrollListener(new ListView.OnScrollListener() {
+
+            int lastVisibleItem = 0;
+            @Override
+            public void onScrollStateChanged(AbsListView view, int scrollState) {
+
+            }
+
+            @Override
+            public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+
+                if (firstVisibleItem != lastVisibleItem) {
+
+                    if (firstVisibleItem > lastVisibleItem) {
+                        // scroll down
+                        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
+                    } else if (isPlaying){
+                        // scroll up
+                        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
+                    }
+                    lastVisibleItem = firstVisibleItem;
+                }
+            }
+        });
+
+        layoutBottomSheet = findViewById(R.id.bottom_sheet);
+
+        bottomSheetBehavior = BottomSheetBehavior.from(layoutBottomSheet);
+        bottomSheetBehavior.setBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+            @Override
+            public void onStateChanged(@NonNull View bottomSheet, int newState) {
+                switch (newState) {
+                    case BottomSheetBehavior.STATE_HIDDEN:
+                        layoutBottomSheet.setVisibility(View.GONE);
+                        Log.d(TAG, "Bottom Sheet state: HIDDEN");
+                        break;
+                    case BottomSheetBehavior.STATE_EXPANDED:
+                    break;
+                    case BottomSheetBehavior.STATE_COLLAPSED:
+                        layoutBottomSheet.setVisibility(View.VISIBLE);
+                        Log.d(TAG, "Bottom Sheet state: COLLPASED");
+                        break;
+                    case BottomSheetBehavior.STATE_DRAGGING:
+                        break;
+                    case BottomSheetBehavior.STATE_SETTLING:
+                        break;
+                }
+            }
+
+            @Override
+            public void onSlide(@NonNull View bottomSheet, float slideOffset) {
+
+            }
+        });
+
+        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
 
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
