@@ -11,11 +11,13 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
+import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.design.widget.BottomNavigationView;
@@ -27,6 +29,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.util.Size;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.AdapterView;
@@ -36,6 +39,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
+import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
@@ -50,6 +54,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     };
 
     public static final int UPDATE_PROGRESS = 1;
+    public static final String ALBUM_ART = "com.glriverside.xgqin.ggmusic.ALBUM_ART_URI";
     public static final String DATA_URI = "com.glriverside.xgqin.ggmusic.DATA_URI";
     public static final String TITLE = "com.glriverside.xgqin.ggmusic.TITLE";
     public static final String ARTIST = "com.glriverside.xgqin.ggmusic.ARTIST";
@@ -139,23 +144,22 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
                         albumId);
 
-                cursor = mContentResolver.query(
-                        albumUri,
-                        null,
-                        null,
-                        null,
-                        null
-                );
+                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                    try {
+                        int width = (int) MainActivity.this.getResources().getDisplayMetrics().density * 40;
+                        int height = (int) MainActivity.this.getResources().getDisplayMetrics().density * 40;
 
-                if (cursor != null && cursor.getCount() > 0) {
-                    cursor.moveToFirst();
-                    int albumArtIndex = cursor.getColumnIndex(MediaStore.Audio.Albums.ALBUM_ART);
-                    String albumArt = cursor.getString(albumArtIndex);
+                        Bitmap albumBitmap = mContentResolver.loadThumbnail(albumUri, new Size(width, height), null);
+                        Glide.with(MainActivity.this).load(albumBitmap).into(ivAlbumThumbnail);
+                    } catch (IOException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+                else {
+                    Bundle args = new Bundle();
+                    args.putString(ALBUM_ART, albumUri.toString());
 
-                    Log.d(TAG, "albumArt: " + albumArt);
-
-                    Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
-                    cursor.close();
+                    getSupportLoaderManager().initLoader(1, args, loaderCallbacks);
                 }
             }
         }
@@ -166,13 +170,34 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @NonNull
         @Override
         public Loader<Cursor> onCreateLoader(int id, @Nullable Bundle args) {
-            return new MediaAsyncTaskLoader(MainActivity.this);
+            switch (id) {
+                case 0:
+                    return new MediaAsyncTaskLoader(MainActivity.this);
+                case 1:
+                    return new AlbumAsyncTaskerLoader(MainActivity.this, args);
+            }
+            return null;
         }
 
         @Override
-        public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor data) {
-            mCursorAdapter.swapCursor(data);
-            mCursorAdapter.notifyDataSetChanged();
+        public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
+            switch (loader.getId()) {
+                case 0:
+                    mCursorAdapter.swapCursor(cursor);
+                    mCursorAdapter.notifyDataSetChanged();
+                    break;
+                case 1:
+                    if (cursor != null && cursor.getCount() > 0) {
+                        cursor.moveToFirst();
+                        int albumArtIndex = cursor.getColumnIndex(MediaStore.Audio.Albums.ALBUM_ART);
+                        String albumArt = cursor.getString(albumArtIndex);
+
+                        Log.d(TAG, "albumArt: " + albumArt);
+
+                        Glide.with(MainActivity.this).load(albumArt).into(ivAlbumThumbnail);
+                    }
+                    break;
+            }
         }
 
         @Override
