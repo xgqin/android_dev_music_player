@@ -13,10 +13,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.net.Uri;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
-import android.os.Message;
 import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -41,6 +38,13 @@ import android.widget.TextView;
 import com.bumptech.glide.Glide;
 import java.io.IOException;
 
+import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.core.ObservableEmitter;
+import io.reactivex.rxjava3.core.ObservableOnSubscribe;
+import io.reactivex.rxjava3.core.Observer;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
+
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
     private ContentResolver mContentResolver;
@@ -53,7 +57,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
 
-    public static final int UPDATE_PROGRESS = 1;
     public static final String ALBUM_ART = "com.glriverside.xgqin.ggmusic.ALBUM_ART_URI";
     public static final String DATA_URI = "com.glriverside.xgqin.ggmusic.DATA_URI";
     public static final String TITLE = "com.glriverside.xgqin.ggmusic.TITLE";
@@ -77,18 +80,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private MusicReceiver musicReceiver;
 
-    private Handler mHandler = new Handler(Looper.getMainLooper()) {
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
-                case UPDATE_PROGRESS:
-                    int position = msg.arg1;
-                    pbProgress.setProgress(position);
-                    break;
-                default:
-                    break;
-            }
-        }
-    };
+    private Disposable musicProgressDisposable;
 
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
@@ -130,6 +122,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 serviceIntent.putExtra(MainActivity.ARTIST, artist);
 
                 startForegroundService(serviceIntent);
+
 
                 navigation.setVisibility(View.VISIBLE);
 
@@ -307,37 +300,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private class MusicProgressRunnable implements Runnable {
-
-        public MusicProgressRunnable() {
-        }
-
-        @Override
-        public void run() {
-            boolean mThreadWorking = true;
-            while (mThreadWorking) {
-                try {
-                    if (mService != null) {
-                        int position = mService.getCurrentPosition();
-
-                        Message message = new Message();
-                        message.what = UPDATE_PROGRESS;
-                        message.arg1 = position;
-                        mHandler.sendMessage(message);
-
-                        Log.d(TAG, "CurrentPosition: " + position);
-                    }
-
-                    mThreadWorking = mService.isPlaying();
-
-                    Thread.sleep(100);
-                } catch (InterruptedException ie) {
-                    ie.printStackTrace();
-                }
-            }
-        }
-    }
-
     public class MusicReceiver extends BroadcastReceiver {
 
         @Override
@@ -347,7 +309,45 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if (mService != null) {
                     pbProgress.setMax(mService.getDuration());
                     Log.d(TAG, "Duration: " + mService.getDuration());
-                    new Thread(new MusicProgressRunnable()).start();
+                    Observable.create(new ObservableOnSubscribe<Integer>() {
+                        @Override
+                        public void subscribe(@io.reactivex.rxjava3.annotations.NonNull ObservableEmitter<Integer> emitter) throws Throwable {
+                            int i = 0;
+                            while (true) {
+                                emitter.onNext(i++);
+                                Thread.sleep(10);
+                            }
+                        }
+                    }).subscribeOn(Schedulers.io())
+                            .observeOn(AndroidSchedulers.mainThread())
+                            .subscribe(new Observer<Integer>() {
+                                @Override
+                                public void onSubscribe(@io.reactivex.rxjava3.annotations.NonNull Disposable d) {
+                                    musicProgressDisposable = d;
+                                }
+
+                                @Override
+                                public void onNext(@io.reactivex.rxjava3.annotations.NonNull Integer integer) {
+                                    if (mService != null && mService.isPlaying()) {
+                                        int position = mService.getCurrentPosition();
+                                        pbProgress.setProgress(position);
+                                    }
+                                }
+
+                                @Override
+                                public void onError(@io.reactivex.rxjava3.annotations.NonNull Throwable e) {
+
+                                }
+
+                                @Override
+                                public void onComplete() {
+
+                                }
+                            });
+                }
+            } else if (intent.getAction().equals(ACTION_MUSIC_STOP)) {
+                if (musicProgressDisposable != null) {
+                    musicProgressDisposable.dispose();
                 }
             }
         }
